@@ -14,21 +14,25 @@ import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class PerformanceTestClient {
     private static final Logger logger = LoggerFactory.getLogger(PerformanceTestClient.class);
     private static final List<MessageConsumer> consumers = new ArrayList<>();
+    private static final ConcurrentHashMap<String, AtomicInteger> messageCounts = new ConcurrentHashMap<>();
 
     public static void main(String[] args) {
         ApplicationContext run = Micronaut.run(Application.class, args);
 
-        int numberOfConsumers = getArgValue(args, "--consumers", 10);
+        int numberOfConsumers = getArgValue(args, "--consumers", 15);
         startConsumers(run, numberOfConsumers);
 
-        // Keep the application running
+        // Periodically log results
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            logConsumerStats();
             stopConsumers();
         }));
     }
@@ -40,9 +44,12 @@ public class PerformanceTestClient {
 
         Flux.range(0, numberOfConsumers)
                 .flatMap(i -> {
-                    String consumerId = "consumer-" + i;
-                    String groupId = "group-" + (i); // Distribute across 5 groups
-                    String messageType = "type-" + i;     // Unique type per consumer
+                    String consumerId = "consumer" + i;
+                    String groupId = "type-" + (i); // Distribute across 5 groups
+                    String messageType = "type-" + i; // Unique type per consumer
+
+                    // Initialize message count for this consumer
+                    messageCounts.put(consumerId, new AtomicInteger(0));
 
                     ConsumerConfig config = ConsumerConfig.builder()
                             .serverHost("localhost")
@@ -53,8 +60,10 @@ public class PerformanceTestClient {
 
                     // Create message handler for this consumer
                     DefaultMessageHandler messageHandler = new DefaultMessageHandler(consumerId);
-                    messageHandler.registerHandler(messageType, message -> {
-                        logger.info("Consumer {} processing message type: {}", consumerId, messageType);
+                    messageHandler.registerBatchHandler(messageType, message -> {
+                        // Increment and log the message count for this consumer
+                        messageCounts.get(consumerId).incrementAndGet();
+                        logger.info("total messages processed by all consumer {}", messageCounts);
                     });
 
                     // Create and configure consumer
@@ -117,6 +126,13 @@ public class PerformanceTestClient {
             Thread.currentThread().interrupt();
             logger.error("Interrupted while stopping consumers", e);
         }
+    }
+
+    private static void logConsumerStats() {
+        logger.info("Final message counts per consumer:");
+        messageCounts.forEach((consumerId, count) -> {
+            logger.info("Consumer {} processed {} messages", consumerId, count.get());
+        });
     }
 
     private static int getArgValue(String[] args, String name, int defaultValue) {

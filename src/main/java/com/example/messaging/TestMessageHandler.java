@@ -2,6 +2,7 @@ package com.example.messaging;
 
 import com.example.messaging.consumer.api.MessageConsumer;
 import com.example.messaging.consumer.handler.MessageHandler;
+import com.example.messaging.models.BatchMessage;
 import com.example.messaging.models.Message;
 import io.micronaut.context.ApplicationContext;
 import io.rsocket.Payload;
@@ -50,6 +51,26 @@ public class TestMessageHandler implements MessageHandler {
 
         } catch (Exception e) {
             logger.error("Error processing TEST message: {}", message.getMsgOffset(), e);
+            return Mono.empty(); // Return false to indicate processing failure
+        }
+    }
+
+    @Override
+    public Mono<Void> handleBatchMessage(BatchMessage batchMessage) {
+        try {
+            logger.info("Processing TEST batch message: batchId={}, count={}, type={}",
+                    batchMessage.getBatchId(),
+                    batchMessage.getBatchId(),
+                    batchMessage.getType());
+
+            // Add your batch message processing logic here
+            // For example:
+            // process(batchMessage.getData());
+
+            return Mono.empty(); // Return true to indicate successful processing
+
+        } catch (Exception e) {
+            logger.error("Error processing TEST batch message: {}", batchMessage.getBatchId(), e);
             return Mono.empty(); // Return false to indicate processing failure
         }
     }
